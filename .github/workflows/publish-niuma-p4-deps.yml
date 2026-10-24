@@ -1,0 +1,71 @@
+name: Publish Niuma P4 managed components
+
+on:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/publish-niuma-p4-deps.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  deps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Resolve fixed ESP-IDF 6.1 dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p probe/main
+          cat > probe/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+          project(niuma_dependency_probe)
+          EOF
+          cat > probe/main/CMakeLists.txt <<'EOF'
+          idf_component_register(SRCS "main.c")
+          EOF
+          cat > probe/main/main.c <<'EOF'
+          void app_main(void) {}
+          EOF
+          cat > probe/main/idf_component.yml <<'EOF'
+          dependencies:
+            idf: ">=6.1,<7"
+            lvgl/lvgl:
+              version: "9.6.0~1"
+              public: true
+            espressif/esp_lcd_st7701: "2.0.3"
+            espressif/esp_lcd_touch_gt911: "1.2.1"
+            espressif/esp_lvgl_port: "2.9.0"
+            espressif/esp_wifi_remote: "1.6.5"
+            espressif/esp_hosted: "3.0.9"
+            espressif/wifi_remote_over_eppp: "0.3.3"
+            espressif/eppp_link: "1.1.6"
+            espressif/esp_codec_dev: "1.6.2"
+            chmorgan/esp-audio-player: "2.0.0"
+            espressif/cjson: "1.7.19~2"
+          targets:
+            - esp32p4
+          EOF
+          docker run --rm -v "$PWD/probe:/project" -w /project espressif/idf:v6.1 \
+            bash -lc 'idf.py set-target esp32p4 reconfigure'
+          sudo chown -R "$USER:$USER" probe
+          test -d probe/managed_components
+          test -s probe/dependencies.lock
+          tar --zstd -cf niuma-p4-managed-components-v17811.tar.zst \
+            -C probe managed_components dependencies.lock main/idf_component.yml
+          sha256sum niuma-p4-managed-components-v17811.tar.zst > niuma-p4-managed-components-v17811.tar.zst.sha256
+          du -sh probe/managed_components
+          ls -lh niuma-p4-managed-components-v17811.tar.zst
+
+      - name: Upload cache to existing toolchain release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gh release upload toolchain-esp-idf-v6.1-p4 \
+            niuma-p4-managed-components-v17811.tar.zst \
+            niuma-p4-managed-components-v17811.tar.zst.sha256 \
+            --repo "$GITHUB_REPOSITORY" --clobber
