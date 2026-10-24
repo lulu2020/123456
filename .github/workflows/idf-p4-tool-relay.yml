@@ -1,0 +1,67 @@
+name: ESP-IDF 6.1 P4 Tool Relay
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout relay repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Prepare official ESP-IDF v6.1 and ESP32-P4 tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zstd
+
+          mkdir -p relay
+          git clone --depth 1 --branch v6.1 --recursive --shallow-submodules \
+            https://github.com/espressif/esp-idf.git relay/esp-idf-v6.1
+
+          export IDF_PATH="$GITHUB_WORKSPACE/relay/esp-idf-v6.1"
+          export IDF_TOOLS_PATH="$GITHUB_WORKSPACE/relay/.espressif"
+          "$IDF_PATH/install.sh" esp32p4
+
+          # Keep source needed for real builds, but remove Git metadata/history.
+          find "$IDF_PATH" -name .git -type d -prune -exec rm -rf {} + || true
+          find "$IDF_PATH" -name .git -type f -delete || true
+
+          cat > relay/RELAY_INFO.txt <<'EOF'
+          source=Espressif official ESP-IDF
+          version=v6.1
+          target=esp32p4
+          platform=linux-x86_64
+          python=3.13
+          purpose=offline ChatGPT container build environment
+          EOF
+
+          tar --zstd -cf idf-p4-v6.1-linux-x86_64.tar.zst \
+            -C relay esp-idf-v6.1 .espressif RELAY_INFO.txt
+          sha256sum idf-p4-v6.1-linux-x86_64.tar.zst > idf-p4-v6.1-linux-x86_64.tar.zst.sha256
+          ls -lh idf-p4-v6.1-linux-x86_64.tar.zst
+          cat idf-p4-v6.1-linux-x86_64.tar.zst.sha256
+
+      - name: Upload tool bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: idf-p4-v6.1-linux-x86_64
+          path: |
+            idf-p4-v6.1-linux-x86_64.tar.zst
+            idf-p4-v6.1-linux-x86_64.tar.zst.sha256
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
