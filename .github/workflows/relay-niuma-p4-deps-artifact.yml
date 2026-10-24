@@ -1,0 +1,30 @@
+name: Relay Niuma P4 dependency cache
+on:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/relay-niuma-p4-deps-artifact.yml']
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download dependency cache release asset
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gh release download toolchain-esp-idf-v6.1-p4 --repo lulu2020/123456 \
+            --pattern 'niuma-p4-managed-components-v17811.tar.zst*'
+          ls -lh niuma-p4-managed-components-v17811.tar.zst*
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niuma-p4-managed-components-v17811
+          path: |
+            niuma-p4-managed-components-v17811.tar.zst
+            niuma-p4-managed-components-v17811.tar.zst.sha256
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
