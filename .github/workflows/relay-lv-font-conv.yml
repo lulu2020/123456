@@ -1,0 +1,34 @@
+name: Relay lv_font_conv
+on:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/relay-lv-font-conv.yml']
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pack lv_font_conv and dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir tool && cd tool
+          npm init -y >/dev/null
+          npm install --omit=dev lv_font_conv
+          cd ..
+          tar --zstd -cf lv-font-conv-offline.tar.zst tool
+          sha256sum lv-font-conv-offline.tar.zst > lv-font-conv-offline.tar.zst.sha256
+          ls -lh lv-font-conv-offline.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lv-font-conv-offline
+          path: |
+            lv-font-conv-offline.tar.zst
+            lv-font-conv-offline.tar.zst.sha256
+          retention-days: 1
+          compression-level: 0
